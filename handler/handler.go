@@ -3,6 +3,7 @@ package handler
 import (
 	"cloud/meta"
 	"cloud/util"
+	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -11,6 +12,7 @@ import (
 	"time"
 )
 
+//文件上传
 func UploadHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "GET" {
 		data, err := ioutil.ReadFile("static/view/index.html")
@@ -49,11 +51,99 @@ func UploadHandler(w http.ResponseWriter, r *http.Request) {
 		//将当前已打开的文件句柄的游标移到文件内容的顶部
 		newFile.Seek(0, 0)
 		fileMeta.FileSha1 = util.FileSha1(newFile)
-		meta.UpdateFileMeta(fileMeta)
+		//meta.UpdateFileMeta(fileMeta)
+		_ = meta.UpdateFileMetaDB(fileMeta)
 		http.Redirect(w, r, "/file/upload/suc", http.StatusFound)
 	}
 }
 
 func UploadSuccHandler(w http.ResponseWriter, r *http.Request) {
 	io.WriteString(w, "Up finished!")
+}
+
+//获取文件元信息
+func GetFileMetaHandler(w http.ResponseWriter, r *http.Request) {
+	r.ParseForm()
+	filehash := r.Form["filehash"][0]
+	fMeta, err := meta.GetFileMetaDB(filehash)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	{
+		data, err := json.Marshal(fMeta)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		w.Write(data)
+	}
+}
+
+//文件下载
+func DownloadHandler(w http.ResponseWriter, r *http.Request) {
+	r.ParseForm()
+	fsha1 := r.Form.Get("filehash")
+	fm := meta.GetFileMeta(fsha1)
+	f, err := os.Open(fm.Location)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	defer f.Close()
+
+	//目前是小文件，将所有文件加载到内存里面去
+	data, err := ioutil.ReadAll(f)
+	//如果文件比较大就需要流的方式，每次读一部分到内存后再刷新继续读
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/octect-stream")
+	w.Header().Set("Content-Description", "attachment;filname=\""+fm.FileName+"\"")
+
+	w.Write(data)
+}
+
+//修改文件（修改文件名称）
+func FileMetaUpdateHandler(w http.ResponseWriter, r *http.Request) {
+	r.ParseForm()
+
+	opType := r.Form.Get("op")
+	fileSha1 := r.Form.Get("filhash")
+	newFileName := r.Form.Get("filename")
+	//返回403
+	if opType != "0" {
+		w.WriteHeader(http.StatusForbidden)
+		return
+	}
+	if r.Method != "POST" {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	curFileMeta := meta.GetFileMeta(fileSha1)
+	curFileMeta.FileName = newFileName
+	meta.UpdateFileMeta(curFileMeta)
+
+	data, err := json.Marshal(curFileMeta)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+	w.Write(data)
+}
+
+//文件删除
+func FileDeleteHandler(w http.ResponseWriter, r *http.Request) {
+	r.ParseForm()
+	fileSha1 := r.Form.Get("filehash")
+
+	fMeta := meta.GetFileMeta(fileSha1)
+
+	os.Remove(fMeta.Location)
+	meta.RemoveFileMeta(fileSha1)
+
 }
