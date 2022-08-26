@@ -1,6 +1,7 @@
 package handler
 
 import (
+	dblayer "cloud/db"
 	"cloud/meta"
 	"cloud/util"
 	"encoding/json"
@@ -9,6 +10,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
+	"strconv"
 	"time"
 )
 
@@ -50,9 +52,19 @@ func UploadHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		//将当前已打开的文件句柄的游标移到文件内容的顶部
 		newFile.Seek(0, 0)
-		fileMeta.FileSha1 = util.FileSha1(newFile)
+		fileMeta.FileSha1 = util.FileSha1(newFile) //后续微服务将该服务分开
 		//meta.UpdateFileMeta(fileMeta)
 		_ = meta.UpdateFileMetaDB(fileMeta)
+
+		//更新用户文件表记录
+		r.ParseForm()
+		username := r.Form.Get("username")
+		suc := dblayer.OnUserFileUploadFinished(username, fileMeta.FileSha1, fileMeta.FileName, fileMeta.FileSize)
+		if suc {
+			http.Redirect(w, r, "/static/view/home.html", http.StatusFound)
+		} else {
+			w.Write([]byte("Upload Failed."))
+		}
 		http.Redirect(w, r, "/file/upload/suc", http.StatusFound)
 	}
 }
@@ -79,6 +91,26 @@ func GetFileMetaHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		w.Write(data)
 	}
+}
+
+//查询批量的文件元信息
+func FileQueryHandler(w http.ResponseWriter, r *http.Request) {
+	r.ParseForm()
+
+	limitCnt, _ := strconv.Atoi(r.Form.Get("limit"))
+	username := r.Form.Get("username")
+	//fileMetas := meta.GetLastFileMetas(limitCnt)
+	userFiles, err := dblayer.QueryUserFileMetas(username, limitCnt)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	data, err := json.Marshal(userFiles)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	w.Write(data)
 }
 
 //文件下载
