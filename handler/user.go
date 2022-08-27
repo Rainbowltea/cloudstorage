@@ -136,7 +136,7 @@ func IsTokenValid(token string) bool {
 	// if len(token) != 40 {
 	// 	return false
 	// }
-	// 判断token的时效性，是否过期
+	// TODO 判断token的时效性，是否过期
 	// 从数据库表tbl_user_token查询username对应的token信息
 	// 对比两个token是否一致
 	return true
