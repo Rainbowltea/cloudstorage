@@ -41,6 +41,16 @@ func SignupHandler(w http.ResponseWriter, r *http.Request) {
 
 //SingInHandler: 处理用户登录
 func SignInHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodGet {
+		data, err := ioutil.ReadFile("./static/view/signin.html")
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		w.Write(data)
+		//http.Redirect(w, r, "/static/view/signin.html", http.StatusFound)
+		return
+	}
 	r.ParseForm()
 	username := r.Form.Get("username")
 	password := r.Form.Get("password")
@@ -61,6 +71,12 @@ func SignInHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	//3.登录成功重定向
 	//w.Write([]byte("http://" + r.Host + "/static/view/home.html"))
+	data1, err := ioutil.ReadFile("./static/view/home.html")
+	data2 := string(data1)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
 	resp := util.RespMsg{
 		Code: 0,
 		Msg:  "OK",
@@ -69,7 +85,7 @@ func SignInHandler(w http.ResponseWriter, r *http.Request) {
 			Username string
 			Token    string
 		}{
-			Location: "http://" + r.Host + "/static/view/home.html",
+			Location: data2,
 			Username: username,
 			Token:    token,
 		},
@@ -117,9 +133,9 @@ func UserInfoHandler(w http.ResponseWriter, r *http.Request) {
 
 // IsTokenValid : token是否有效
 func IsTokenValid(token string) bool {
-	if len(token) != 40 {
-		return false
-	}
+	// if len(token) != 40 {
+	// 	return false
+	// }
 	// 判断token的时效性，是否过期
 	// 从数据库表tbl_user_token查询username对应的token信息
 	// 对比两个token是否一致

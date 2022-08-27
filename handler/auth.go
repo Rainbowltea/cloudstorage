@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"io/ioutil"
 	"net/http"
 )
 
@@ -16,7 +17,15 @@ func HTTPInterceptor(h http.HandlerFunc) http.HandlerFunc {
 			if len(username) < 3 || !IsTokenValid(token) {
 				// w.WriteHeader(http.StatusForbidden)
 				// token校验失败则跳转到登录页面
-				http.Redirect(w, r, "/static/view/signin.html", http.StatusFound)
+				// http.Redirect(w, r, "/static/view/signin.html", http.StatusFound)
+				// return
+				data, err := ioutil.ReadFile("./static/view/signin.html")
+				if err != nil {
+					w.WriteHeader(http.StatusInternalServerError)
+					return
+				}
+				w.Write(data)
+				//http.Redirect(w, r, "/static/view/signin.html", http.StatusFound)
 				return
 			}
 			h(w, r)

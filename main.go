@@ -7,12 +7,12 @@ import (
 )
 
 func main() {
-	http.HandleFunc("/file/upload", handler.UploadHandler)
-	http.HandleFunc("/file/upload/suc", handler.UploadSuccHandler)
-	http.HandleFunc("/file/meta", handler.GetFileMetaHandler)
-	http.HandleFunc("/file/download", handler.DownloadHandler)
-	http.HandleFunc("/file/update", handler.FileMetaUpdateHandler)
-	http.HandleFunc("/file/delete", handler.FileDeleteHandler)
+	http.HandleFunc("/file/upload", handler.HTTPInterceptor(handler.UploadHandler))
+	http.HandleFunc("/file/upload/suc", handler.HTTPInterceptor(handler.UploadSuccHandler))
+	http.HandleFunc("/file/meta", handler.HTTPInterceptor(handler.GetFileMetaHandler))
+	http.HandleFunc("/file/download", handler.HTTPInterceptor(handler.DownloadHandler))
+	http.HandleFunc("/file/update", handler.HTTPInterceptor(handler.FileMetaUpdateHandler))
+	http.HandleFunc("/file/delete", handler.HTTPInterceptor(handler.FileDeleteHandler))
 	http.HandleFunc("/file/query", handler.HTTPInterceptor(handler.FileQueryHandler))
 
 	http.HandleFunc("/user/signup", handler.SignupHandler)
