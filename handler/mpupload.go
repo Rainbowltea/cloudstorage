@@ -7,11 +7,14 @@ import (
 	"net/http"
 	"os"
 	"path"
+	"strings"
 
+	rPool "cloud/cache/redis"
+	dblayer "cloud/db"
 	"strconv"
 	"time"
 
-	rPool "cloud/cache/redis"
+	"github.com/garyburd/redigo/redis"
 )
 
 // MultipartUploadInfo : 初始化信息
@@ -49,7 +52,7 @@ func InitialMultipartUploadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 4. 将初始化信息写入到redis缓存
-	rConn.Do("HSET", "MP_"+upInfo.UploadID, "chunkcount", upInfo.ChunkCount)
+	rConn.Do("HSET", "MP_"+upInfo.UploadID, "chunkcount", upInfo.ChunkCount) //文件被分成的数目
 	rConn.Do("HSET", "MP_"+upInfo.UploadID, "filehash", upInfo.FileHash)
 	rConn.Do("HSET", "MP_"+upInfo.UploadID, "filesize", upInfo.FileSize)
 
@@ -88,12 +91,62 @@ func UploadPartHandler(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 	}
-	//TODO
+	//TODO客户端上传token与服务端token进行验证确保文件上传无误
 
 	// 4. 更新redis缓存状态
 	rConn.Do("HSET", "MP_"+uploadID, "chkidx_"+chunkIndex, 1)
 
 	// 5. 返回处理结果到客户端
+	w.Write(util.NewRespMsg(0, "OK", nil).JSONBytes())
+
+}
+
+// CompleteUploadHandler : 通知上传合并
+func CompleteUploadHandler(w http.ResponseWriter, r *http.Request) {
+	// 1. 解析请求参数
+	r.ParseForm()
+	upid := r.Form.Get("uploadid")
+	username := r.Form.Get("username")
+	filehash := r.Form.Get("filehash")
+	filesize := r.Form.Get("filesize")
+	filename := r.Form.Get("filename")
+
+	// 2. 获得redis连接池中的一个连接
+	rConn := rPool.RedisPool().Get()
+	defer rConn.Close()
+
+	// 3. 通过uploadid查询redis并判断是否所有分块上传完成
+	//每一次上传文件会在redis中的该文件数+1,若最后该值与切片数相同
+	//则代表传输完成
+	data, err := redis.Values(rConn.Do("HGETALL", "MP_"+upid))
+	if err != nil {
+		w.Write(util.NewRespMsg(-1, "complete upload failed", nil).JSONBytes())
+		return
+	}
+	totalCount := 0                     //期望值
+	chunkCount := 0                     //实际查出的值
+	for i := 0; i < len(data); i += 2 { //使用"HGETALL"同时查出key和value
+		k := string(data[i].([]byte))
+		v := string(data[i+1].([]byte))
+		if k == "chunkcount" {
+			totalCount, _ = strconv.Atoi(v)
+		} else if strings.HasPrefix(k, "chkidx_") && v == "1" {
+			chunkCount++
+		}
+	}
+	if totalCount != chunkCount {
+		w.Write(util.NewRespMsg(-2, "invalid request", nil).JSONBytes())
+		return
+	}
+
+	// TODO：4 合并分块
+
+	// 5. 更新唯一文件表及用户文件表
+	fsize, _ := strconv.Atoi(filesize)
+	dblayer.OnFileUploadFinished(filehash, filename, int64(fsize), "")
+	dblayer.OnUserFileUploadFinished(username, filehash, filename, int64(fsize))
+
+	// 6. 响应处理结果
 	w.Write(util.NewRespMsg(0, "OK", nil).JSONBytes())
 
 }
