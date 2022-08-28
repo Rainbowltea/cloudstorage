@@ -150,3 +150,17 @@ func CompleteUploadHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write(util.NewRespMsg(0, "OK", nil).JSONBytes())
 
 }
+
+//TODO通知取消上传
+func CancelUploadPartHandler(w http.ResponseWriter, r *http.Request) {
+	//删除已存在的分块文件
+	//删除redis缓存状态
+	//更行mysql文件Status
+}
+
+//TODO查看分块上传状态
+func MultipartUploadStatusHandler(w http.ResponseWriter, r *http.Request) {
+	//检查分块上传状态是否有效
+	//获取分块初始化信息
+	//获取已上传的分块信息
+}
