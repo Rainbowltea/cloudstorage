@@ -16,3 +16,5 @@ github.com/stretchr/objx v0.1.0/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+
 github.com/stretchr/testify v1.3.0/go.mod h1:M5WIy9Dh21IEIfnGCwXGc5bZfKNJtfHm1UVUgZn+9EI=
 golang.org/x/tools v0.1.12 h1:VveCTK38A2rkS8ZqFY25HIDFscX5X9OoEhJd3quQmXU=
 golang.org/x/tools v0.1.12/go.mod h1:hNGJHUnrk76NpqgfD5Aqm5Crs+Hm0VOH/i9J2+nxYbc=
+gopkg.in/amz.v1 v1.0.0-20150111123259-ad23e96a31d2 h1:FMrsB0OTjHsPDA1NM7AhRmmZzkBPu3iGdxK/5MFfBmk=
+gopkg.in/amz.v1 v1.0.0-20150111123259-ad23e96a31d2/go.mod h1:F0YaN4yi2XekmElKkPYfybh7pReQE9Ph48lSgeCkzyc=

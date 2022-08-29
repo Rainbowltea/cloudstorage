@@ -1,0 +1,26 @@
+#1 创建ceph专用网络
+docker network create --driver bridge --subnet 172.20.0.0/16 ceph-network
+docker network inspect ceph-network
+#2创建相关目录及修改权限，用于挂载volume
+mkdir -p /www/ceph /var/lib/ceph/osd /www/osd/
+chown -R 64045:64045 /var/lib/ceph/osd/
+chown -R 64045:64045 /www/osd/
+#3 创建monitor节点
+docker run -itd --name monnode --network ceph-network --ip 172.20.0.10 -e MON_NAME=monnode -e MON_IP=172.20.0.10 -v /www/ceph:/etc/ceph ceph/mon
+#4 在monitor节点上标识3个osd节点
+docker exec monnode ceph osd create
+docker exec monnode ceph osd create
+docker exec monnode ceph osd create
+#5 创建OSD节点
+docker run -itd --name osdnode0 --network ceph-network -e CLUSTER=ceph -e WEIGHT=1.0 -e MON_NAME=monnode -e MON_IP=172.20.0.10 -v /www/ceph:/etc/ceph -v /www/ceph:/etc/ceph -v /www/osd/0:/var/lib/ceph/osd/ceph-0 ceph/osd
+docker run -itd --name osdnode1 --network ceph-network -e CLUSTER=ceph -e WEIGHT=1.0 -e MON_NAME=monnode -e MON_IP=172.20.0.10 -v /www/ceph:/etc/ceph -v /www/ceph:/etc/ceph -v /www/osd/0:/var/lib/ceph/osd/ceph-1 ceph/osd
+docker run -itd --name osdnode2 --network ceph-network -e CLUSTER=ceph -e WEIGHT=1.0 -e MON_NAME=monnode -e MON_IP=172.20.0.10 -v /www/ceph:/etc/ceph -v /www/ceph:/etc/ceph -v /www/osd/0:/var/lib/ceph/osd/ceph-2 ceph/osd
+#6 增加monitor节点，组件成集群
+docker run -itd --name monnode_1 --network ceph-network --ip 172.20.0.11 -e MON_NAME=monnode_1 -e MON_IP=172.20.0.11 -v /www/ceph:/etc/ceph ceph/mon
+docker run -itd --name monnode_2 --network ceph-network --ip 172.20.0.12 -e MON_NAME=monnode_2 -e MON_IP=172.20.0.12 -v /www/ceph:/etc/ceph ceph/mon
+#7创建gateway节点
+docker run -itd --name gwnode --network ceph-network --ip 172.20.0.9 -p 9080:80 -e RGW_NAME=gwnode -v /www/ceph:/etc/ceph ceph/radosgw
+#8查看ceph集群状态
+sleep 10 && docker exec monnode ceph -s
+#9创建用户
+radosgw-admin user create --uid="xxh" --display-name="xxh"
