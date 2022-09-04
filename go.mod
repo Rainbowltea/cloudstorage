@@ -9,7 +9,10 @@ require (
 	golang.org/x/tools v0.1.12
 )
 
+require golang.org/x/time v0.0.0-20220722155302-e5dcc9cfc0b9 // indirect
+
 require (
+	github.com/aliyun/aliyun-oss-go-sdk v2.2.5+incompatible
 	github.com/modern-go/concurrent v0.0.0-20180228061459-e0a39a4cb421 // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
 	gopkg.in/amz.v1 v1.0.0-20150111123259-ad23e96a31d2

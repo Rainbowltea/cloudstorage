@@ -3,6 +3,8 @@ package handler
 import (
 	dblayer "cloud/db"
 	"cloud/meta"
+	"cloud/store/ceph"
+	"cloud/store/oss"
 	"cloud/util"
 	"encoding/json"
 	"fmt"
@@ -11,7 +13,10 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"time"
+
+	"gopkg.in/amz.v1/s3"
 )
 
 //文件上传
@@ -31,35 +36,43 @@ func UploadHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		defer file.Close()
-		fileMeta := meta.FileMeta{
+		newfileMeta := meta.FileMeta{
 			FileName: head.Filename,
 			Location: "/tmp/" + head.Filename,
 			UploadAt: time.Now().Format("2006-01-02 15:04:05"),
 		}
 		//创建本地文件来接受文件流
-		newFile, err := os.Create(fileMeta.Location)
+		newFile, err := os.Create(newfileMeta.Location)
 		if err != nil {
-			fmt.Print("Failed to create file,err:%s\n", err.Error())
+			fmt.Printf("Failed to create file,err:%s\n", err.Error())
 			return
 		}
 		defer newFile.Close()
 
 		//将内存中的文件拷贝到新文件的buffer区中
-		fileMeta.FileSize, err = io.Copy(newFile, file)
+		newfileMeta.FileSize, err = io.Copy(newFile, file)
 		if err != nil {
 			fmt.Printf("Failed to save data into file,err:%s\n", err.Error())
 			return
 		}
 		//将当前已打开的文件句柄的游标移到文件内容的顶部
 		newFile.Seek(0, 0)
-		fileMeta.FileSha1 = util.FileSha1(newFile) //后续微服务将该服务分开
+		newfileMeta.FileSha1 = util.FileSha1(newFile) //后续微服务将该服务分开
+
+		//同时将文件写入ceph存储
+		newFile.Seek(0, 0)
+		data, _ := ioutil.ReadAll(newFile)
+		bucket := ceph.GetCephBucket("userfile")
+		cephPath := "/ceph/" + newfileMeta.FileSha1 //保证唯一性
+		_ = bucket.Put(cephPath, data, "octet-stream", s3.PublicRead)
+		newfileMeta.Location = cephPath
 		//meta.UpdateFileMeta(fileMeta)
-		_ = meta.UpdateFileMetaDB(fileMeta)
+		_ = meta.UpdateFileMetaDB(newfileMeta)
 
 		//更新用户文件表记录
 		r.ParseForm()
 		username := r.Form.Get("username")
-		suc := dblayer.OnUserFileUploadFinished(username, fileMeta.FileSha1, fileMeta.FileName, fileMeta.FileSize)
+		suc := dblayer.OnUserFileUploadFinished(username, newfileMeta.FileSha1, newfileMeta.FileName, newfileMeta.FileSize)
 		if suc {
 			http.Redirect(w, r, "/static/view/home.html", http.StatusFound)
 		} else {
@@ -82,7 +95,6 @@ func GetFileMetaHandler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-
 	{
 		data, err := json.Marshal(fMeta)
 		if err != nil {
@@ -117,8 +129,10 @@ func FileQueryHandler(w http.ResponseWriter, r *http.Request) {
 func DownloadHandler(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
 	fsha1 := r.Form.Get("filehash")
+	//TODO从ceph中获取文件
+	// d, _ := bucket.Get("ceph/filehash")
 	fm := meta.GetFileMeta(fsha1)
-	f, err := os.Open(fm.Location)
+	f, err := os.Open(fm.Location) //本地打开信息
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
@@ -227,4 +241,27 @@ func TryFastUploadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Write(resp.JSONBytes())
 	return
+}
+
+// DownloadURLHandler : 生成文件的下载地址
+func DownloadURLHandler(w http.ResponseWriter, r *http.Request) {
+	filehash := r.Form.Get("filehash")
+	// 从文件表查找记录
+	row, _ := dblayer.GetFileMeta(filehash)
+
+	// TODO: 判断文件存在OSS，还是Ceph，还是在本地
+	if strings.HasPrefix(row.FileAddr.String, "/tmp") {
+		username := r.Form.Get("username")
+		token := r.Form.Get("token")
+		tmpUrl := fmt.Sprintf("http://%s/file/download?filehash=%s&username=%s&token=%s",
+			r.Host, filehash, username, token)
+		w.Write([]byte(tmpUrl))
+	} else if strings.HasPrefix(row.FileAddr.String, "/ceph") {
+		// TODO: ceph下载url
+	} else if strings.HasPrefix(row.FileAddr.String, "oss/") {
+		// oss下载url
+		signedURL := oss.DownloadURL(row.FileAddr.String)
+		w.Write([]byte(signedURL))
+	}
+
 }
