@@ -8,7 +8,7 @@ import (
 )
 
 var conn *amqp.Connection
-var channel *amqp.Channel
+var channel *amqp.Channel //进行消息的接受和发布
 
 // 如果异常关闭，会接收通知
 var notifyClose chan *amqp.Error
@@ -36,16 +36,17 @@ func init() {
 }
 
 func initChannel() bool {
+	//1.判断channel是否为空
 	if channel != nil {
 		return true
 	}
-
+	//2.获取一个rabbitmq的一个连接
 	conn, err := amqp.Dial(config.RabbitURL)
 	if err != nil {
 		log.Println(err.Error())
 		return false
 	}
-
+	//3.打开一个channel，用于信息的发布或者接收
 	channel, err = conn.Channel()
 	if err != nil {
 		log.Println(err.Error())
@@ -57,17 +58,18 @@ func initChannel() bool {
 
 // Publish : 发布消息
 func Publish(exchange, routingKey string, msg []byte) bool {
+	//1.检查channel是否正常
 	if !initChannel() {
 		return false
 	}
-
+	//2.执行消息发布动作
 	if nil == channel.Publish(
 		exchange,
 		routingKey,
-		false, // 如果没有对应的queue, 就会丢弃这条小心
+		false, // 如果没有对应的queue, 就会丢弃这条信息
 		false, //
 		amqp.Publishing{
-			ContentType: "text/plain",
+			ContentType: "text/plain", //明文格式
 			Body:        msg}) {
 		return true
 	}

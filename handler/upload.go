@@ -1,13 +1,17 @@
 package handler
 
 import (
+	cmn "cloud/common"
+	cfg "cloud/config"
 	dblayer "cloud/db"
 	"cloud/meta"
+	"cloud/mq"
 	"cloud/store/ceph"
 	"cloud/store/oss"
 	"cloud/util"
 	"encoding/json"
 	"fmt"
+	_ "gopkg.in/amz.v1/s3"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -15,8 +19,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	"gopkg.in/amz.v1/s3"
 )
 
 //文件上传
@@ -61,11 +63,49 @@ func UploadHandler(w http.ResponseWriter, r *http.Request) {
 
 		//同时将文件写入ceph存储
 		newFile.Seek(0, 0)
-		data, _ := ioutil.ReadAll(newFile)
-		bucket := ceph.GetCephBucket("userfile")
-		cephPath := "/ceph/" + newfileMeta.FileSha1 //保证唯一性
-		_ = bucket.Put(cephPath, data, "octet-stream", s3.PublicRead)
-		newfileMeta.Location = cephPath
+
+		// data, _ := ioutil.ReadAll(newFile)
+		// bucket := ceph.GetCephBucket("userfile")
+		// cephPath := "/ceph/" + newfileMeta.FileSha1 //保证唯一性
+		// _ = bucket.Put(cephPath, data, "octet-stream", s3.PublicRead)
+		// newfileMeta.Location = cephPath
+		if cfg.CurrentStoreType == cmn.StoreCeph {
+			// 文件写入Ceph存储
+			data, _ := ioutil.ReadAll(newFile)
+			cephPath := "/ceph/" + newfileMeta.FileSha1
+			_ = ceph.PutObject("userfile", cephPath, data)
+			newfileMeta.Location = cephPath
+		} else if cfg.CurrentStoreType == cmn.StoreOSS {
+			// 文件写入OSS存储
+			ossPath := "oss/" + newfileMeta.FileSha1
+			// 判断写入OSS为同步还是异步
+			if !cfg.AsyncTransferEnable {
+				err = oss.Bucket().PutObject(ossPath, newFile)
+				if err != nil {
+					fmt.Println(err.Error())
+					w.Write([]byte("Upload failed!"))
+					return
+				}
+				newfileMeta.Location = ossPath
+			} else {
+				// 写入异步转移任务队列
+				data := mq.TransferData{
+					FileHash:      newfileMeta.FileSha1,
+					CurLocation:   newfileMeta.Location,
+					DestLocation:  ossPath,
+					DestStoreType: cmn.StoreOSS,
+				}
+				pubData, _ := json.Marshal(data)
+				pubSuc := mq.Publish(
+					cfg.TransExchangeName,
+					cfg.TransOSSRoutingKey,
+					pubData,
+				)
+				if !pubSuc {
+					// TODO: 当前发送转移信息失败，稍后重试
+				}
+			}
+		} //TODO 其他else if 也即混合上传“同时Ceph和OSS”，“所有类型存储都存储一份”
 		//meta.UpdateFileMeta(fileMeta)
 		_ = meta.UpdateFileMetaDB(newfileMeta)
 
